@@ -1,0 +1,31 @@
+version: '3'
+services:
+    tweet_collector:
+        build: tweet_collector/
+        depends_on:
+            - mongodb
+
+    mongodb:
+        image: mongo
+        ports:
+            - 27018:27017
+
+    etl_job:
+         build: etl_job/
+         depends_on:
+             - mongodb
+             - postgres
+
+    postgres:
+        image: postgres
+        environment:
+            - POSTGRES_USER=postgres
+            - POSTGRES_PASSWORD=1234
+        ports:
+            - 5555:5432
+
+    slack_bot:
+        build: slack_bot/
+        volumes:
+            # synchronises directory on local machine with directory in container
+            - ./slack_bot:/app
