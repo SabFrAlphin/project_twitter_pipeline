@@ -1,6 +1,7 @@
 # extract transform pipeline
 import time
 import logging
+from datetime import datetime
 from pymongo import MongoClient
 from sqlalchemy import create_engine
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
@@ -28,36 +29,34 @@ CREATE TABLE IF NOT EXISTS tweets (
 user_name TEXT,
 tweet_text TEXT,
 followers_count REAL,
-sentiment_score DECIMAL,
-time_stamp TIMESTAMP
+sentiment_score REAL,
+time_stamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 """
-
 engine.execute(create_query)
 
 
 # initialize sentiment analysis
 s = SentimentIntensityAnalyzer()
 
+
+# Instantiate last timestamp
+last_timestamp = datetime.strptime('1970-01-01 00:00:00', '%Y-%m-%d %H:%M:%S')
+
 # write a query to extract database
 
 
-def extract():
-    # extracts all tweets from MongoDB
-    extracted_tweets = list(tweets_mongo.find())
+def extract(last_timestamp):
+    '''Extracts all tweets from the MongoDB database'''
+    extracted_tweets = list(tweets_mongo.find({"time_stamp": {"$gt": last_timestamp}}))
     return extracted_tweets
 
 # 2. perform sentiment analysis
 
 
 def transform(extracted_tweets):
-    # performs sentiment analysis on tweets_mongo and returns in a format
-    # so that the tweets can be written into a postgres database
-    # for every tweet in extracted tweets we want the perform sentiment
-    # ananlysis on the text
     transformed_tweets = []
     for tweet in extracted_tweets:
-        # tweet is a dictionary; sentiment score will be calculated in the afternoon
         sentiment = s.polarity_scores(tweet['tweet_text'])
         tweet['sentiment_score'] = sentiment['compound']
         transformed_tweets.append(tweet)
@@ -67,44 +66,19 @@ def transform(extracted_tweets):
 
 
 def load(transformed_tweets):
-    # transformed_tweets is a list and we want to write each tweet into a db
-    # so
-    for tweet in transformed_tweets:  # the [-1:] leads to us only loading the last tweet
-        # insert_query = f"""INSERT INTO tweets VALUES (
-        #                 "{tweet["user_name"]}",
-        #                 "{tweet["tweet_text"]}",
-        #                 "{tweet["followers_count"]}",
-        #                 "{tweet["time_stamp"]}",
-        #                 "{tweet["sentiment_score"]}"
-        #                 );"""
+    for tweet in transformed_tweets:
+
         insert_query = "INSERT INTO tweets VALUES (%s, %s, %s, %s, %s);"
-        data = [tweet["user_name"], tweet["tweet_text"], tweet["followers_count"],
-                tweet["time_stamp"], tweet["sentiment_score"]]
+        data = [tweet["user_name"], tweet["tweet_text"],
+                tweet["followers_count"], tweet["sentiment_score"], tweet["time_stamp"]]
         engine.execute(insert_query, data)
     logging.critical('Successfully added all tweets to postgres db')
 
 
-# until we stop the container or an error occurs
 while True:
-    # extract the tweets from the mongodb, transform and load to postgres
-    extracted_tweets = extract()
+    extracted_tweets = extract(last_timestamp)
     transformed_tweets = transform(extracted_tweets)
     load(transformed_tweets)
+    last_timestamp = extracted_tweets[-1]['time_stamp']
+
     time.sleep(60)
-
-'''
-in the code as it is written right now , what is happening is that the whole
-collection of documents from the mongodb is extracted in every single rund
-of the ETL processand is transformed and loaded into the postgress darabase.
-That means we will have a lot of duplicates in the postgres db
-
-easiest fix:
--only load the last tweet
-
-advanced:
-- introdue a timestamp into the mondodb DATABASE and only query the tweets
-that have not been extracted in the last run
-- if you run tweepy, you get a data field called 'extracted_at'
-- you could tag the extracted tweets in the mongodb (by object id)
-- or drop and run a full load
-'''

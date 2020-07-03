@@ -3,7 +3,7 @@ from tweepy import OAuthHandler, Stream
 from tweepy.streaming import StreamListener
 import json
 import logging
-import datetime
+from datetime import datetime
 from pymongo import MongoClient
 
 # connect to mongodb
@@ -26,13 +26,7 @@ class TwitterListener(StreamListener):
         every single tweet as it is intercepted in real-time"""
 
         t = json.loads(data)  # t is just a regular python dictionary.
-        # now = datetime.now()
-        # tweepyTime = now.strftime('% B % d, % Y % H: % M: % S')
-        if t['created_at'] != None:
-            try:
-                timeStamp = t['created_at']
-            except KeyError:
-                timeStamp = 'Not provided'
+        timeStamp = datetime.strptime(t['created_at'], '%a %b %d %H:%M:%S +0000 %Y')
         tweet = {
             'tweet_text': t['text'],
             'user_name': t['user']['screen_name'],
